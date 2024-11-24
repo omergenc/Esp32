@@ -1,4 +1,7 @@
 #include "WiFi.h"
+#include <OneWire.h>
+#include "ThingSpeak.h"
+#include <DallasTemperature.h>
 
 #define LED         2
 #define BUTTON      0
@@ -10,73 +13,79 @@ String hostname = "ESP32 Omer Genc";
 const uint port = 7001;
 const char* ip = "192.168.1.10";
 
-WiFiClient localClient;
+WiFiClient client;
+unsigned long myChannelNumber = 2649032;
+const char * myWriteAPIKey = "UL2SZD2KC9JEWJDP";
 int adcValue = 0;
+int ledDelay = 100;
+unsigned long lastTime = 0;
+unsigned long timerDelay = (15*60*1000);
+
+float temperatureC = 32.5;
+
+// GPIO where the DS18B20 is connected to
+const int oneWireBus = 4;     
+
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(oneWireBus);
+
+// Pass our oneWire reference to Dallas Temperature sensor 
+DallasTemperature sensors(&oneWire);
 
 void setup()
 {
   // put your setup code here, to run once:
   delay(1000);
-  Serial.begin(115200);
+  Serial.begin(115200);   //Initialize serial
   pinMode(LED, OUTPUT);
-  //pinMode(BUTTON, INPUT_PULLUP);
-
-  WiFi.setHostname(hostname.c_str());
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
-
-  Serial.println(WiFi.localIP());
+  sensors.begin();        // Start the DS18B20 sensor
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(hostname.c_str());  
+  ThingSpeak.begin(client);  // Initialize ThingSpeak
 }
 
 void loop()
 {
     // put your main code here, to run repeatedly:
-/*
-  Serial.print("\nESP32 IP Address: ");
-  Serial.println(WiFi.localIP());
-  Serial.print("ESP32 HostName: ");
-  Serial.println(WiFi.getHostname());
-  Serial.print("RRSI: ");
-  Serial.println(WiFi.RSSI());*/
-
-  sendRequest();
-
-  adcValue = analogRead(ANALOGPIN);
-  Serial.println(adcValue);
-
   digitalWrite(LED, HIGH);
-  delay(250);
+  delay(ledDelay);
   digitalWrite(LED, LOW);
-  delay(250);
-}
+  delay(ledDelay);
 
-void sendRequest()
-{
-  if(!localClient.connected())
+  if ((millis() - lastTime) > timerDelay)
   {
-    if (localClient.connect(ip, port))
+    // Connect or reconnect to WiFi
+    if(WiFi.status() != WL_CONNECTED)
     {
-      Serial.println("localClient connected");
-      localClient.write('A'); //Single char
-      Serial.println("msg sent");
+      Serial.print("Attempting to connect");
+      while(WiFi.status() != WL_CONNECTED)
+      {
+        WiFi.begin(ssid, password); 
+        delay(5000);     
+      } 
+      Serial.println("\nConnected.");
     }
-  }
 
-  if(localClient.connected())
-  {
-    Serial.println("Start reading");
-    if (localClient.available() > 0)
+    // Get a new temperature reading
+    sensors.requestTemperatures(); 
+    temperatureC = sensors.getTempCByIndex(0);
+
+    Serial.print("Temperature (ºC): ");
+    Serial.println(temperatureC);
+    
+    int x = ThingSpeak.writeField(myChannelNumber, 1, temperatureC, myWriteAPIKey);
+
+    if(x == 200)
     {
-      char c = localClient.read();
-      Serial.print(c);
-      localClient.write(c); // Send received char
+      Serial.println("Channel update successful.");
+      ledDelay = 1000;
     }
-    Serial.println("Stop reading");
+    else
+    {
+      Serial.println("Problem updating channel. HTTP error code " + String(x));
+      ledDelay = 100;
+    }
+
+    lastTime = millis();
   }
 }
