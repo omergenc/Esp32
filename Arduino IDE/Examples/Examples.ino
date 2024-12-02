@@ -2,10 +2,15 @@
 #include <OneWire.h>
 #include "ThingSpeak.h"
 #include <DallasTemperature.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
 
 #define LED         2
 #define BUTTON      0
 #define ANALOGPIN   0
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
 const char* ssid = "BugsBunny";
 const char* password = "izMir1997";
@@ -27,21 +32,37 @@ float temperatureC = 32.5;
 const int oneWireBus = 4;     
 
 // Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(oneWireBus);
+//OneWire oneWire(oneWireBus);
 
 // Pass our oneWire reference to Dallas Temperature sensor 
-DallasTemperature sensors(&oneWire);
+//DallasTemperature sensors(&oneWire);
 
 void setup()
 {
   // put your setup code here, to run once:
   delay(1000);
   Serial.begin(115200);   //Initialize serial
-  pinMode(LED, OUTPUT);
+  pinMode(LED, OUTPUT);/*
   sensors.begin();        // Start the DS18B20 sensor
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(hostname.c_str());  
   ThingSpeak.begin(client);  // Initialize ThingSpeak
+*/
+  BLEDevice::init("MyESP32");
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
+
+  pCharacteristic->setValue("Hello World says Neil");
+  pService->start();
+  // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
 
 void loop()
@@ -51,7 +72,7 @@ void loop()
   delay(ledDelay);
   digitalWrite(LED, LOW);
   delay(ledDelay);
-
+/*
   if ((millis() - lastTime) > timerDelay)
   {
     // Connect or reconnect to WiFi
@@ -87,5 +108,5 @@ void loop()
     }
 
     lastTime = millis();
-  }
+  }*/
 }
