@@ -1,6 +1,5 @@
 #include "WiFi.h"
 #include <OneWire.h>
-#include "ThingSpeak.h"
 #include <DallasTemperature.h>
 
 #define LED                   2
@@ -15,11 +14,13 @@ unsigned long sensorlastTime = 0;
 float lux = 1.0;
 float temperature = 0.0;
 
-WiFiClient client;
-unsigned long myChannelNumber = 2649032;
-const char * myWriteAPIKey = "UL2SZD2KC9JEWJDP";
+byte thingSpeakIdx = 0;
+char thingspeakBuffer[128];
 const char* ssid = "BugsBunny";
 const char* password = "izMir1997";
+const uint port = 80;
+const char* ip = "52.20.4.242";
+WiFiClient localClient;
 
 // GPIO where the DS18B20 is connected to
 const int oneWireBus = 4;     
@@ -36,7 +37,6 @@ void setup()
   led_set_pattern(LED_PATTERN_ERROR);
   sensors.begin();
   WiFi.mode(WIFI_STA);
-  ThingSpeak.begin(client);
 }
 
 void loop()
@@ -94,84 +94,60 @@ void wifi_handler()
 {
   if ((millis() - wifilastTime) > (15*60*1000))
   {
-    if(WiFi.status() != WL_CONNECTED)
-    {
-      Serial.print("Attempting to connect");
-      while(WiFi.status() != WL_CONNECTED)
-      {
-        WiFi.begin(ssid, password); 
-        delay(5000);     
-      } 
-      Serial.println("\nConnected.");
-    }
-
-    int x = 0;
-    int retry = 0;
-
-    while(x != 200)
-    {
-      x = ThingSpeak.writeField(myChannelNumber, 1, temperature, myWriteAPIKey);
-      delay(1000);
-
-      if(x == 200)
-      {
-        Serial.println("Field 1 update successful.");
-        led_set_pattern(LED_PATTERN_NORMAL);
-      }
-      else
-      {
-        Serial.println("Problem Field 1 updating channel. HTTP error code " + String(x));
-        led_set_pattern(LED_PATTERN_ERROR);
-      }
-
-      retry += 1;
-      if(retry >= 5)
-      {
-        break;
-      }     
-    }
-
-    delay(1000);
-    
-    if(WiFi.status() != WL_CONNECTED)
-    {
-      Serial.print("Attempting to connect");
-      while(WiFi.status() != WL_CONNECTED)
-      {
-        WiFi.begin(ssid, password); 
-        delay(5000);     
-      } 
-      Serial.println("\nConnected.");
-    }
-
-    lux = temperature - 5.2;
-
-    x = 0;
-    retry = 0;
-
-    while(x != 200)
-    {
-      x = ThingSpeak.writeField(myChannelNumber, 2, lux, myWriteAPIKey);
-      delay(1000);
-
-      if(x == 200)
-      {
-        Serial.println("Field 2 update successful.");
-        led_set_pattern(LED_PATTERN_NORMAL);
-      }
-      else
-      {
-        Serial.println("Problem Field 2 updating channel. HTTP error code " + String(x));
-        led_set_pattern(LED_PATTERN_ERROR);
-      }
-
-      retry += 1;
-      if(retry >= 5)
-      {
-        break;
-      }     
-    }
+    led_set_pattern(LED_PATTERN_ERROR);
 
     wifilastTime = millis();
+
+    int tryCount = 0;
+
+    if(WiFi.status() != WL_CONNECTED)
+    {
+      Serial.print("Attempting to connect");
+      while(WiFi.status() != WL_CONNECTED)
+      {
+        WiFi.begin(ssid, password); 
+        delay(5000);
+
+        tryCount += 1;
+
+        if(tryCount >= 5)
+        {
+          break;
+        }
+      } 
+      Serial.println("\nConnected.");
+    }
+
+    if(WiFi.status() == WL_CONNECTED)
+    {
+      if (localClient.connect(ip, port))
+      {
+        Serial.println("localClient connected");
+        //localClient.write('A');
+
+        thingSpeakIdx = 0;
+        memcpy(&thingspeakBuffer[thingSpeakIdx], "GET ", 4);
+        thingSpeakIdx += 4;
+
+        memcpy(&thingspeakBuffer[thingSpeakIdx], "https://api.thingspeak.com/update?", 34);
+        thingSpeakIdx += 34;
+
+        memcpy(&thingspeakBuffer[thingSpeakIdx], "api_key=", 8);
+        thingSpeakIdx += 8;
+
+        memcpy(&thingspeakBuffer[thingSpeakIdx], "UL2SZD2KC9JEWJDP", 16);
+        thingSpeakIdx += 16;
+
+        thingSpeakIdx +=sprintf(&thingspeakBuffer[thingSpeakIdx], "&field1=%.2f&field2=%.2f\r\n", temperature, lux);
+
+        localClient.write_P(thingspeakBuffer, thingSpeakIdx);
+        Serial.println("msg sent");
+        delay(1000);
+        localClient.readString();
+        delay(1000);
+        led_set_pattern(LED_PATTERN_NORMAL);
+      }      
+      localClient.stop();
+    }
   }
 }
