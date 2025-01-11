@@ -42,7 +42,7 @@ const char* ssid = "BugsBunny";
 const char* password = "izMir1997";
 const uint port = 80;
 //const char* ip = "52.20.4.242";
-const char* ip = "52.2.152.117";
+const char* ip = "54.146.3.149";
 //const char* ip = "54.235.105.242";
 WiFiClient localClient;
 
